@@ -88,6 +88,7 @@ function LotteryContent() {
     // Wait for transaction to be confirmed, then get result
     setTimeout(async () => {
       try {
+        if (!publicClient) return;
         const resultData = await publicClient.readContract({
           address: CONTRACT_ADDRESS,
           abi: CONTRACT_ABI,
