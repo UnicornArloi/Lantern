@@ -97,7 +97,7 @@ export default function Home() {
               </div>
               <div style={{ display: 'flex', gap: '15px', padding: '15px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                 <span style={{ color: '#e74c3c', fontWeight: 700, fontSize: '14px' }}>02</span>
-                <span style={{ color: '#000000' }}>50% 进入营销钱包，50% 回购代币加入奖池</span>
+                <span style={{ color: '#000000' }}>祈福未中奖手续费将自动回购代币进入奖池</span>
               </div>
               <div style={{ display: 'flex', gap: '15px', padding: '15px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                 <span style={{ color: '#e74c3c', fontWeight: 700, fontSize: '14px' }}>03</span>

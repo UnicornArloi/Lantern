@@ -1,38 +1,120 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { WagmiProvider, useAccount, useConnect, useDisconnect, useWriteContract, useReadContract, useWaitForTransactionReceipt, createConfig, http, usePublicClient } from "wagmi";
+import { bsc } from "wagmi/chains";
 
-export default function Lottery() {
+const CONTRACT_ADDRESS = "0xFecdb0B87B721960Caf654edC983892111948AE5";
+
+const CONTRACT_ABI = [
+  {"inputs":[],"name":"buyLottery","outputs":[],"stateMutability":"payable","type":"function"},
+  {"inputs":[],"name":"getPoolBalance","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"getMyResult","outputs":[{"name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+];
+
+const config = createConfig({
+  chains: [bsc],
+  transports: { [bsc.id]: http() },
+});
+
+function WalletButton() {
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+  if (isConnected) {
+    return <button onClick={() => disconnect()} style={{ background: 'linear-gradient(135deg, #e74c3c, #f39c12)', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>{address?.slice(0, 6)}...{address?.slice(-4)}</button>;
+  }
+  return <button onClick={() => connect({ connector: connectors[0] })} style={{ background: 'linear-gradient(135deg, #e74c3c, #f39c12)', border: 'none', color: 'white', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '14px', fontWeight: 500 }}>连接钱包</button>;
+}
+
+function useLottery() {
+  const { data: hash, isPending, writeContract } = useWriteContract();
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ 
+    hash: hash 
+  });
+  const buy = () => {
+    writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: CONTRACT_ABI,
+      functionName: "buyLottery",
+      value: BigInt(0.01 * 1e18),
+    });
+  };
+  return { hash, buy, isPending, isConfirming };
+}
+
+function usePrizePool() {
+  const { data, refetch } = useReadContract({
+    address: CONTRACT_ADDRESS,
+    abi: CONTRACT_ABI,
+    functionName: "getPoolBalance",
+  });
+  return { pool: data ? Number(data) / 1e18 : 0, refetch };
+}
+
+
+
+function LotteryContent() {
+  const { isConnected } = useAccount();
+  const { buy, isPending, isConfirming } = useLottery();
+  const publicClient = usePublicClient();
+  const { address } = useAccount();
+  
+  const { pool: prizePool, refetch: refetchPool } = usePrizePool();
+  
+  useEffect(() => {
+    if (!refetchPool) return;
+    const interval = setInterval(() => {
+      refetchPool();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [refetchPool]);
+
   const [isShaking, setIsShaking] = useState(false);
   const [result, setResult] = useState<{type: string; reward: string} | null>(null);
+  const [txHash, setTxHash] = useState<string | undefined>(undefined);
   const [showModal, setShowModal] = useState(false);
   const [currentLantern, setCurrentLantern] = useState("/lantern-main.png");
 
-  const handleLottery = () => {
-    if (isShaking) return;
+  const handleLottery = async () => {
+    if (isShaking || !isConnected) return;
     setIsShaking(true);
     setResult(null);
     setCurrentLantern("/lantern-main.png");
     
-    setTimeout(() => {
-      const random = Math.random() * 100;
-      let res = { type: "common", reward: "0" };
-      let lantern = "/lantern-common.png";
-      
-      if (random > 90 && random <= 98) {
-        res = { type: "rare", reward: "1000" };
-        lantern = "/lantern-rare.png";
-      } else if (random > 98) {
-        res = { type: "legendary", reward: "奖池20%" };
-        lantern = "/lantern-legendary.png";
+    buy();
+    
+    // Wait for transaction to be confirmed, then get result
+    setTimeout(async () => {
+      try {
+        const resultData = await publicClient.readContract({
+          address: CONTRACT_ADDRESS,
+          abi: CONTRACT_ABI,
+          functionName: 'getMyResult',
+          account: address,
+        });
+        
+        let res = { type: "common", reward: "0" };
+        let lantern = "/lantern-common.png";
+        
+        if (resultData === 2n) {
+          res = { type: "rare", reward: "代币红包" };
+          lantern = "/lantern-rare.png";
+        } else if (resultData === 3n) {
+          res = { type: "legendary", reward: "奖池20%" };
+          lantern = "/lantern-legendary.png";
+        }
+        
+        setResult(res);
+        setCurrentLantern(lantern);
+        setIsShaking(false);
+        setTimeout(() => setShowModal(true), 500);
+      } catch (e) {
+        console.error(e);
+        setIsShaking(false);
       }
-      
-      setResult(res);
-      setCurrentLantern(lantern);
-      setIsShaking(false);
-      setTimeout(() => setShowModal(true), 500);
-    }, 2000);
+    }, 8000);
   };
 
   const closeModal = () => {
@@ -67,6 +149,7 @@ export default function Lottery() {
           <Link href="/" style={{ padding: '10px 24px', color: 'rgba(255,255,255,0.7)', textDecoration: 'none', borderRadius: '20px', fontWeight: 500 }}>首页</Link>
           <Link href="/lottery" style={{ padding: '10px 24px', color: 'white', textDecoration: 'none', borderRadius: '20px', background: 'linear-gradient(135deg, #e74c3c, #f39c12)', fontWeight: 500 }}>祈福</Link>
         </nav>
+        <WalletButton />
       </header>
 
       <main style={{ textAlign: 'center', padding: '120px 20px 60px', maxWidth: '800px', margin: '0 auto' }}>
@@ -75,7 +158,7 @@ export default function Lottery() {
 
         <div style={{ background: 'linear-gradient(135deg, rgba(231,76,60,0.15), rgba(243,156,18,0.15))', border: '1px solid rgba(231,76,60,0.4)', borderRadius: '20px', padding: '25px 160px', display: 'inline-block', marginBottom: '20px' }}>
           <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', marginBottom: '5px' }}>奖池金额</div>
-          <div style={{ fontSize: '42px', fontWeight: 900, background: 'linear-gradient(135deg, #f1c40f, #f39c12)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>0</div>
+          <div style={{ fontSize: '42px', fontWeight: 900, background: 'linear-gradient(135deg, #f1c40f, #f39c12)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{prizePool ? prizePool.toFixed(2) : '0'}</div>
         </div>
 
         <div style={{ margin: '40px 0', position: 'relative' }}>
@@ -91,8 +174,8 @@ export default function Lottery() {
           )}
         </div>
 
-        <button onClick={handleLottery} disabled={isShaking} style={{ display: 'block', width: '100%', maxWidth: '320px', margin: '20px auto', padding: '22px', background: isShaking ? 'rgba(231,76,60,0.5)' : 'linear-gradient(135deg, #e74c3c, #f39c12)', border: 'none', borderRadius: '16px', cursor: isShaking ? 'not-allowed' : 'pointer', boxShadow: isShaking ? 'none' : '0 10px 40px rgba(231,76,60,0.4)', transition: 'all 0.3s' }}>
-          <div style={{ fontSize: '28px', fontWeight: 900, color: 'white' }}>开始祈福</div>
+        <button onClick={handleLottery} disabled={isShaking || !isConnected} style={{ display: 'block', width: '100%', maxWidth: '320px', margin: '20px auto', padding: '22px', background: isShaking ? 'rgba(231,76,60,0.5)' : 'linear-gradient(135deg, #e74c3c, #f39c12)', border: 'none', borderRadius: '16px', cursor: isShaking ? 'not-allowed' : 'pointer', boxShadow: isShaking ? 'none' : '0 10px 40px rgba(231,76,60,0.4)', transition: 'all 0.3s' }}>
+          <div style={{ fontSize: '28px', fontWeight: 900, color: 'white' }}>{isPending || isConfirming ? '等待确认...' : '开始祈福'}</div>
         </button>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '50px', flexWrap: 'wrap' }}>
@@ -170,5 +253,13 @@ export default function Lottery() {
         @keyframes bounceIn { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
     </div>
+  );
+}
+
+export default function Lottery() {
+  return (
+    <WagmiProvider config={config}>
+      <LotteryContent />
+    </WagmiProvider>
   );
 }
