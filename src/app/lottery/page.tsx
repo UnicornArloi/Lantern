@@ -38,7 +38,7 @@ function useLottery() {
       address: CONTRACT_ADDRESS,
       abi: CONTRACT_ABI,
       functionName: "buyLottery",
-      value: BigInt(0.01 * 1e18),
+      value: BigInt(1e16),
     });
   };
   return { hash, buy, isPending, isConfirming };
@@ -99,10 +99,10 @@ function LotteryContent() {
         let res = { type: "common", reward: "0" };
         let lantern = "/lantern-common.png";
         
-        if (resultData === 2n) {
+        if (resultData === BigInt(2)) {
           res = { type: "rare", reward: "代币红包" };
           lantern = "/lantern-rare.png";
-        } else if (resultData === 3n) {
+        } else if (resultData === BigInt(3)) {
           res = { type: "legendary", reward: "奖池20%" };
           lantern = "/lantern-legendary.png";
         }
